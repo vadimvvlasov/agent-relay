@@ -1,7 +1,8 @@
 """FastAPI routes for Agent Relay.
 
-Persistence and SQLite transaction details live in :mod:`database` and
-:mod:`storage`; the deterministic local worker is in :mod:`worker`.
+Persistence and transaction details live in :mod:`database` and
+:mod:`storage` (SQLite locally, PostgreSQL via compose); the deterministic
+local worker is in :mod:`worker`.
 """
 
 from __future__ import annotations
@@ -195,6 +196,15 @@ async def me(current=Depends(current_agent)) -> dict[str, Any]:
     return agent_summary(current)
 
 
+def _is_transient_db_error(exc: Exception) -> bool:
+    """SQLite 'database is locked' plus Postgres serialization/deadlock retries."""
+    message = str(exc).lower()
+    return any(
+        marker in message
+        for marker in ("locked", "deadlock", "serialization", "could not serialize", "connection")
+    )
+
+
 @app.post("/api/v1/tasks", status_code=201)
 async def tasks_create(
     body: TaskCreateRequest,
@@ -210,7 +220,7 @@ async def tasks_create(
             result = create_task(current.id, body.to, body.input, idempotency_key)
             return JSONResponse(status_code=201, content=result)
         except OperationalError as exc:
-            if retry == 2 or "locked" not in str(exc).lower():
+            if retry == 2 or not _is_transient_db_error(exc):
                 raise
             await asyncio.sleep(0.05 * (retry + 1))
     raise RelayError("storage_error", "The task could not be persisted.", 503)
@@ -226,7 +236,7 @@ async def claim(
         try:
             result = await asyncio.to_thread(claim_one, current.id, body.worker_id)
         except OperationalError as exc:
-            if "locked" not in str(exc).lower():
+            if not _is_transient_db_error(exc):
                 raise
             result = None
         if result is not None:
