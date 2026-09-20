@@ -1,0 +1,14 @@
+- generic [active] [ref=e1]:
+  - heading "Agent Relay" [level=1] [ref=e2]
+  - paragraph [ref=e3]: Local dashboard. Credentials stay in this browser and are sent only to this relay.
+  - generic [ref=e4]:
+    - text: Agent token
+    - textbox "Agent token" [ref=e5]:
+      - /placeholder: agt_…
+  - button "Use token" [ref=e6] [cursor=pointer]
+  - button "Clear" [ref=e7] [cursor=pointer]
+  - status [ref=e8]
+  - generic [ref=e9]:
+    - heading "Agents" [level=2] [ref=e10]
+    - button "Refresh" [ref=e11] [cursor=pointer]
+  - heading "My tasks" [level=2] [ref=e13]

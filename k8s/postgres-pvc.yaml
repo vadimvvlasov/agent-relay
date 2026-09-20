@@ -1,0 +1,13 @@
+# Persistent storage for PostgreSQL. Bound by the postgres Deployment below.
+# kind ships a default StorageClass ("standard"), so no storageClassName needed.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: postgres-data
+  namespace: agent-relay
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 5Gi

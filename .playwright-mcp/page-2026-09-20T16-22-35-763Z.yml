@@ -1,0 +1,79 @@
+- generic [ref=e1]:
+  - heading "Agent Relay" [level=1] [ref=e2]
+  - paragraph [ref=e3]: Local dashboard. Credentials stay in this browser and are sent only to this relay.
+  - generic [ref=e4]:
+    - text: Agent token
+    - textbox "Agent token" [ref=e5]:
+      - /placeholder: agt_…
+      - text: agt_aaPrUpMau1FZQOlWu-C0rtadwamRa_81w6GN_Z4lzac
+  - button "Use token" [active] [ref=e6] [cursor=pointer]
+  - button "Clear" [ref=e7] [cursor=pointer]
+  - status [ref=e8]: Updated 9:22:34 PM
+  - generic [ref=e9]:
+    - heading "Agents" [level=2] [ref=e10]
+    - button "Refresh" [ref=e11] [cursor=pointer]
+    - table [ref=e15]:
+      - rowgroup [ref=e16]:
+        - row [ref=e17]:
+          - columnheader "ID" [ref=e18]
+          - columnheader "Name" [ref=e19]
+          - columnheader "Description" [ref=e20]
+          - columnheader "Last seen" [ref=e21]
+      - rowgroup [ref=e22]:
+        - row [ref=e23]:
+          - cell "agent_29da4d0d158141d8ac6c1986db23a5fc" [ref=e24]
+          - cell "alice" [ref=e25]
+          - cell [ref=e26]
+          - cell [ref=e27]
+        - row [ref=e28]:
+          - cell "agent_0430e7139e9241748e95c4130f30b6cb" [ref=e29]
+          - cell "bob" [ref=e30]
+          - cell [ref=e31]
+          - cell [ref=e32]
+        - row [ref=e33]:
+          - cell "agent_fc971984c6c543cda6bc8c95366fe923" [ref=e34]
+          - cell "alice" [ref=e35]
+          - cell [ref=e36]
+          - cell "2026-09-20T16:18:51Z" [ref=e37]
+        - row [ref=e38]:
+          - cell "agent_fd9450027c3e4eb2b97619ff713103bd" [ref=e39]
+          - cell "bob" [ref=e40]
+          - cell [ref=e41]
+          - cell "2026-09-20T16:18:51Z" [ref=e42]
+        - row [ref=e43]:
+          - cell "agent_cd617e077d8a460a822916303d100dc5" [ref=e44]
+          - cell "alice" [ref=e45]
+          - cell [ref=e46]
+          - cell "2026-09-20T16:19:23Z" [ref=e47]
+        - row [ref=e48]:
+          - cell "agent_f36a50943bdf44d983eee99f6b89fdf2" [ref=e49]
+          - cell "bob" [ref=e50]
+          - cell [ref=e51]
+          - cell "2026-09-20T16:19:23Z" [ref=e52]
+        - row [ref=e53]:
+          - cell "agent_e97d8be4d2af443b99b5d92ca71e2f84" [ref=e54]
+          - cell "q2-alice" [ref=e55]
+          - cell "sender" [ref=e56]
+          - cell "2026-09-20T16:22:05Z" [ref=e57]
+        - row [ref=e58]:
+          - cell "agent_81e575b96765420fa03b79491c24a2cd" [ref=e59]
+          - cell "q2-bob" [ref=e60]
+          - cell "worker" [ref=e61]
+          - cell "2026-09-20T16:22:05Z" [ref=e62]
+        - row [ref=e63]:
+          - cell "agent_c6e89c6de9a54c209b6f68cb1bd0bd5c" [ref=e64]
+          - cell "viewer" [ref=e65]
+          - cell [ref=e66]
+          - cell "2026-09-20T16:22:34Z" [ref=e67]
+  - generic [ref=e12]:
+    - heading "My tasks" [level=2] [ref=e13]
+    - table [ref=e69]:
+      - rowgroup [ref=e70]:
+        - row [ref=e71]:
+          - columnheader "ID" [ref=e72]
+          - columnheader "Route" [ref=e73]
+          - columnheader "Status" [ref=e74]
+          - columnheader "Input" [ref=e75]
+          - columnheader "Output / error" [ref=e76]
+          - columnheader "Delivery history" [ref=e77]
+      - rowgroup

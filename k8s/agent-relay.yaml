@@ -1,0 +1,72 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: agent-relay
+  namespace: agent-relay
+  labels:
+    app: agent-relay
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: agent-relay
+  template:
+    metadata:
+      labels:
+        app: agent-relay
+    spec:
+      containers:
+        - name: agent-relay
+          image: agent-relay:kind
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 8000
+              name: http
+          env:
+            - name: RELAY_DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: agent-relay
+                  key: RELAY_DATABASE_URL
+          # /ready checks the real tables (agents/tasks/attempts), so traffic
+          # only reaches pods whose schema is migrated and DB reachable.
+          readinessProbe:
+            httpGet:
+              path: /ready
+              port: 8000
+            initialDelaySeconds: 5
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 6
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 15
+            periodSeconds: 20
+            timeoutSeconds: 5
+            failureThreshold: 3
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 1000m
+              memory: 512Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: agent-relay
+  namespace: agent-relay
+  labels:
+    app: agent-relay
+spec:
+  type: ClusterIP
+  selector:
+    app: agent-relay
+  ports:
+    - port: 8000
+      targetPort: 8000
+      protocol: TCP
+      name: http
