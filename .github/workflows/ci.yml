@@ -3,10 +3,12 @@
 #   test   - runs the starter suite (test_agent_relay.py) and the live HTTP
 #            integration test (test_live_exchange.py) against a real
 #            PostgreSQL 16 service (same image as compose.yaml / k8s/).
-#   deploy - builds a new Docker image, loads it into a fresh kind cluster,
-#            and applies k8s/. It `needs: test`, so it only runs when the
-#            tests pass. (The kind cluster is ephemeral per run; GitHub
-#            runners cannot reach a local persistent cluster.)
+#   deploy - configures Docker/kind access, builds a uniquely tagged image
+#            (agent-relay:<commit-sha>), loads it into a fresh kind cluster,
+#            points the Deployment at that tag, and waits for the rollout.
+#            It `needs: test`, so it only runs when the tests pass. (The kind
+#            cluster is ephemeral per run; GitHub runners cannot reach a
+#            local persistent cluster.)
 
 name: ci
 
@@ -117,6 +119,14 @@ jobs:
     # Gating: this job only runs when the test job succeeds.
     needs: test
 
+    env:
+      # Unique tag per version: every commit produces its own image, so each
+      # rollout runs exactly the freshly built image and stays addressable
+      # for rollbacks. The manifests keep the stable `agent-relay:kind`
+      # placeholder; the step below points the Deployment at this tag.
+      IMAGE_TAG: agent-relay:${{ github.sha }}
+      CLUSTER_NAME: kind
+
     steps:
       - name: Check out code
         uses: actions/checkout@v4
@@ -129,20 +139,36 @@ jobs:
           cluster_name: kind
           wait: 60s
 
+      - name: Configure access to Docker and the kind cluster
+        run: |
+          set -euo pipefail
+          docker info
+          kind get clusters
+          kubectl config use-context "kind-${{ env.CLUSTER_NAME }}"
+          kubectl cluster-info
+          kubectl auth can-i create deployments --namespace agent-relay
+
       - name: Build Docker image
-        # Tag must match k8s/agent-relay.yaml (image: agent-relay:kind);
-        # the sha tag keeps each CI build traceable.
-        run: docker build -t agent-relay:kind -t agent-relay:${{ github.sha }} .
+        run: docker build -t "${{ env.IMAGE_TAG }}" .
 
       - name: Load image into kind
-        run: kind load docker-image agent-relay:kind --name kind
+        run: kind load docker-image "${{ env.IMAGE_TAG }}" --name "${{ env.CLUSTER_NAME }}"
 
       - name: Deploy manifests
         run: |
+          set -euo pipefail
           kubectl apply -k ./k8s
-          kubectl -n agent-relay rollout status deployment/postgres --timeout=180s
-          kubectl -n agent-relay rollout status deployment/agent-relay --timeout=180s
-          kubectl -n agent-relay wait --for=condition=ready pod -l app=agent-relay --timeout=180s
+          kubectl -n agent-relay rollout status deployment/postgres --timeout=300s
+          # Point the Deployment at this version's unique image tag so the
+          # new pods actually run the freshly built image.
+          kubectl -n agent-relay set image deployment/agent-relay "agent-relay=${{ env.IMAGE_TAG }}"
+
+      - name: Wait for rollout to finish
+        run: |
+          set -euo pipefail
+          kubectl -n agent-relay rollout status deployment/agent-relay --timeout=300s
+          kubectl -n agent-relay wait --for=condition=ready pod -l app=agent-relay --timeout=300s
+          kubectl -n agent-relay get pods -l app=agent-relay -o wide
 
       - name: Verify deployed API
         run: |
