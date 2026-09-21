@@ -166,8 +166,11 @@ jobs:
       - name: Wait for rollout to finish
         run: |
           set -euo pipefail
+          # rollout status already blocks until the new ReplicaSet's pods are
+          # Ready; a separate `kubectl wait -l app=agent-relay` would also
+          # match the OLD ReplicaSet's terminating pods, which never satisfy
+          # condition=ready and time out the step for no reason.
           kubectl -n agent-relay rollout status deployment/agent-relay --timeout=300s
-          kubectl -n agent-relay wait --for=condition=ready pod -l app=agent-relay --timeout=300s
           kubectl -n agent-relay get pods -l app=agent-relay -o wide
 
       - name: Verify deployed API
