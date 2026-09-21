@@ -1,0 +1,169 @@
+# CI: test against PostgreSQL, then build and deploy to kind.
+#
+#   test   - runs the starter suite (test_agent_relay.py) and the live HTTP
+#            integration test (test_live_exchange.py) against a real
+#            PostgreSQL 16 service (same image as compose.yaml / k8s/).
+#   deploy - builds a new Docker image, loads it into a fresh kind cluster,
+#            and applies k8s/. It `needs: test`, so it only runs when the
+#            tests pass. (The kind cluster is ephemeral per run; GitHub
+#            runners cannot reach a local persistent cluster.)
+
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  test:
+    name: test (PostgreSQL)
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: relay
+          POSTGRES_PASSWORD: relay
+          POSTGRES_DB: agent_relay
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U relay -d agent_relay"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+          --health-start-period 10s
+
+    env:
+      # Same credentials as the service above and k8s/secrets.yaml.
+      RELAY_DATABASE_URL: postgresql+psycopg://relay:relay@localhost:5432/agent_relay
+      RELAY_BASE_URL: http://127.0.0.1:8000
+
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Install dependencies
+        run: uv sync --frozen
+
+      - name: Wait for PostgreSQL
+        run: |
+          set -euo pipefail
+          python3 - <<'EOF'
+          import socket
+          import time
+
+          for attempt in range(60):
+              try:
+                  with socket.create_connection(("127.0.0.1", 5432), timeout=2):
+                      print("PostgreSQL is accepting connections")
+                      break
+              except OSError:
+                  if attempt == 59:
+                      raise
+                  time.sleep(1)
+          EOF
+
+      - name: Run starter tests against PostgreSQL
+        run: uv run pytest test_agent_relay.py -v
+
+      - name: Start API and run live integration test against PostgreSQL
+        run: |
+          set -euo pipefail
+          # The server inherits RELAY_DATABASE_URL from the job env, so the
+          # live test exercises the real HTTP API + real PostgreSQL (not the
+          # TestClient / scratch SQLite DB). test_live_exchange.py skips when
+          # no server is listening, so the grep guard below proves it really ran.
+          uv run uvicorn main:app --host 127.0.0.1 --port 8000 > /tmp/relay.log 2>&1 &
+          SERVER_PID=$!
+          trap 'kill $SERVER_PID 2>/dev/null || true' EXIT
+          for i in $(seq 1 60); do
+            if curl -sf http://127.0.0.1:8000/health >/dev/null \
+              && curl -sf http://127.0.0.1:8000/ready >/dev/null; then
+              echo "API ready after ${i}s"
+              break
+            fi
+            if [ "$i" = 60 ]; then
+              echo "API never became ready; server log:"
+              cat /tmp/relay.log
+              exit 1
+            fi
+            sleep 1
+          done
+          uv run pytest test_live_exchange.py -v 2>&1 | tee /tmp/live-test.log
+          grep -q "1 passed" /tmp/live-test.log
+
+      - name: Show server log on failure
+        if: failure()
+        run: cat /tmp/relay.log
+
+  deploy:
+    name: build image and deploy to kind
+    runs-on: ubuntu-latest
+    # Gating: this job only runs when the test job succeeds.
+    needs: test
+
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v4
+
+      - name: Create kind cluster
+        uses: helm/kind-action@v1
+        with:
+          version: v0.29.0
+          node_image: kindest/node:v1.33.1
+          cluster_name: kind
+          wait: 60s
+
+      - name: Build Docker image
+        # Tag must match k8s/agent-relay.yaml (image: agent-relay:kind);
+        # the sha tag keeps each CI build traceable.
+        run: docker build -t agent-relay:kind -t agent-relay:${{ github.sha }} .
+
+      - name: Load image into kind
+        run: kind load docker-image agent-relay:kind --name kind
+
+      - name: Deploy manifests
+        run: |
+          kubectl apply -k ./k8s
+          kubectl -n agent-relay rollout status deployment/postgres --timeout=180s
+          kubectl -n agent-relay rollout status deployment/agent-relay --timeout=180s
+          kubectl -n agent-relay wait --for=condition=ready pod -l app=agent-relay --timeout=180s
+
+      - name: Verify deployed API
+        run: |
+          set -euo pipefail
+          kubectl -n agent-relay get pods,svc,deploy
+          kubectl -n agent-relay port-forward svc/agent-relay 8000:8000 > /tmp/port-forward.log 2>&1 &
+          PF_PID=$!
+          trap 'kill $PF_PID 2>/dev/null || true' EXIT
+          for i in $(seq 1 60); do
+            if curl -sf http://127.0.0.1:8000/health >/dev/null \
+              && curl -sf http://127.0.0.1:8000/ready >/dev/null; then
+              echo "Deployed API is healthy (health + ready) after ${i}s"
+              curl -s http://127.0.0.1:8000/health
+              echo
+              break
+            fi
+            if [ "$i" = 60 ]; then
+              echo "Deployed API never became ready; port-forward log:"
+              cat /tmp/port-forward.log
+              kubectl -n agent-relay describe pods -l app=agent-relay
+              exit 1
+            fi
+            sleep 1
+          done
